@@ -13,6 +13,7 @@ const elements = {
     title: document.querySelector('#dialog-title'),
     name: document.querySelector('#object-name'),
     content: document.querySelector('#object-content'),
+    formatJsonButton: document.querySelector('#format-json'),
     list: document.querySelector('#objects-list'),
     filter: document.querySelector('#object-filter'),
     comparisonDropzone: document.querySelector('#comparison-dropzone'),
@@ -336,6 +337,15 @@ elements.openButton.addEventListener('click', () => openDialog());
 elements.filter.addEventListener('input', renderObjects);
 elements.saveSetButton.addEventListener('click', saveComparisonSet);
 elements.setSelector.addEventListener('change', (event) => loadComparisonSet(event.target.value));
+elements.formatJsonButton.addEventListener('click', () => {
+    try {
+        const formattedContent = JSON.stringify(JSON.parse(elements.content.value), null, 2);
+        elements.content.value = formattedContent;
+    } catch {
+        window.alert('Content must be valid JSON before it can be formatted.');
+        elements.content.focus();
+    }
+});
 elements.closeButton.addEventListener('click', closeDialog);
 elements.cancelButton.addEventListener('click', closeDialog);
 
@@ -372,18 +382,30 @@ elements.comparisonDropzone.addEventListener('drop', (event) => {
 elements.form.addEventListener('submit', (event) => {
     event.preventDefault();
 
-    const name = elements.name.value.trim();
+    let name = elements.name.value.trim();
     const content = elements.content.value.trim();
 
-    if (!name || !content) {
+    if (!content) {
         return;
     }
 
+    let parsedContent;
     try {
-        JSON.parse(content);
+        parsedContent = JSON.parse(content);
     } catch {
         window.alert('Content must be valid JSON.');
         elements.content.focus();
+        return;
+    }
+
+    if (!name && parsedContent && typeof parsedContent === 'object' &&
+        !Array.isArray(parsedContent) && typeof parsedContent.eventName === 'string') {
+        name = parsedContent.eventName.trim();
+    }
+
+    if (!name) {
+        window.alert('Enter a name or include a valid "eventName" in the JSON.');
+        elements.name.focus();
         return;
     }
 

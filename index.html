@@ -38,11 +38,21 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
+            gap: 16px;
             margin-bottom: 8px;
+        }
+
+        .object-controls {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 8px;
+            flex: 1;
         }
 
         .filter-input {
             width: min(320px, 100%);
+            min-width: 0;
             box-sizing: border-box;
             border: 1px solid var(--border);
             border-radius: 6px;
@@ -299,6 +309,14 @@
             padding: 8px;
         }
 
+        .content-field {
+            position: relative;
+        }
+
+        .format-json-button {
+            margin-top: 8px;
+        }
+
         .dialog-actions {
             display: flex;
             justify-content: flex-end;
@@ -310,6 +328,21 @@
             align-items: center;
             gap: 4px;
             justify-content: center;
+        }
+
+        @media (max-width: 600px) {
+            .cards-container > .header {
+                align-items: stretch;
+                flex-direction: column;
+            }
+
+            .object-controls {
+                justify-content: stretch;
+            }
+
+            .filter-input {
+                flex: 1;
+            }
         }
 
         .icon {
@@ -325,7 +358,7 @@
     <div class="cards-container">
         <div class="header">
             <h2>Available objects</h2>
-            <div>
+            <div class="object-controls">
                 <input id="object-filter" class="filter-input" type="search" placeholder="Filter by name, key or value" aria-label="Filter objects">
                 <button id="open-object-dialog" class="icon-button" type="button">
                     <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -358,11 +391,12 @@
             </div>
             <label class="form-field">
                 Name
-                <input type="text" name="object-name" id="object-name" required maxlength="100" placeholder="Object name">
+                <input type="text" name="object-name" id="object-name" maxlength="100" placeholder="Object name (optional)">
             </label>
             <label class="form-field">
                 Content (valid JSON)
                 <textarea name="object-content" id="object-content" required placeholder='{"key": "value"}' rows="9"></textarea>
+                <button id="format-json" class="format-json-button" type="button">Format JSON</button>
             </label>
             <div class="dialog-actions">
                 <button id="cancel-object" type="button">Cancel</button>
