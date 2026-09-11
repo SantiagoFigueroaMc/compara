@@ -1,4 +1,6 @@
 const STORAGE_KEY = 'compara-objects';
+const COMPARISON_STORAGE_KEY = 'compara-comparison';
+const COMPARISON_SETS_STORAGE_KEY = 'compara-comparison-sets';
 
 const icons = {
     edit: '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.862 4.487Zm0 0L19.5 7.125" /></svg>',
@@ -12,12 +14,19 @@ const elements = {
     name: document.querySelector('#object-name'),
     content: document.querySelector('#object-content'),
     list: document.querySelector('#objects-list'),
+    filter: document.querySelector('#object-filter'),
+    comparisonDropzone: document.querySelector('#comparison-dropzone'),
+    setName: document.querySelector('#comparison-set-name'),
+    saveSetButton: document.querySelector('#save-comparison-set'),
+    setSelector: document.querySelector('#comparison-set-selector'),
     openButton: document.querySelector('#open-object-dialog'),
     closeButton: document.querySelector('#close-btn'),
     cancelButton: document.querySelector('#cancel-object'),
 };
 
 let objects = loadObjects();
+let comparisonIds = loadComparisonIds();
+let comparisonSets = loadComparisonSets();
 let editingId = null;
 
 function loadObjects() {
@@ -40,20 +49,89 @@ function saveObjects() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(objects));
 }
 
+function loadComparisonIds() {
+    const storedIds = localStorage.getItem(COMPARISON_STORAGE_KEY);
+
+    if (!storedIds) {
+        return [];
+    }
+
+    try {
+        const parsedIds = JSON.parse(storedIds);
+        return Array.isArray(parsedIds) ? parsedIds : [];
+    } catch {
+        console.error(`Unable to read stored comparison from "${COMPARISON_STORAGE_KEY}".`);
+        return [];
+    }
+}
+
+function saveComparisonIds() {
+    localStorage.setItem(COMPARISON_STORAGE_KEY, JSON.stringify(comparisonIds));
+}
+
+function loadComparisonSets() {
+    const storedSets = localStorage.getItem(COMPARISON_SETS_STORAGE_KEY);
+
+    if (!storedSets) {
+        return [];
+    }
+
+    try {
+        const parsedSets = JSON.parse(storedSets);
+        return Array.isArray(parsedSets) ? parsedSets : [];
+    } catch {
+        console.error(`Unable to read comparison sets from "${COMPARISON_SETS_STORAGE_KEY}".`);
+        return [];
+    }
+}
+
+function saveComparisonSets() {
+    localStorage.setItem(COMPARISON_SETS_STORAGE_KEY, JSON.stringify(comparisonSets));
+}
+
+function renderComparisonSetOptions() {
+    elements.setSelector.replaceChildren();
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'Load saved set';
+    elements.setSelector.append(placeholder);
+
+    comparisonSets.forEach((set) => {
+        const option = document.createElement('option');
+        option.value = set.id;
+        option.textContent = set.name;
+        elements.setSelector.append(option);
+    });
+}
+
 function renderObjects() {
     elements.list.replaceChildren();
 
-    if (objects.length === 0) {
+    const filter = elements.filter.value.trim().toLowerCase();
+    const visibleObjects = objects.filter((object) => {
+        const searchableContent = `${object.name} ${object.content}`.toLowerCase();
+        return searchableContent.includes(filter);
+    });
+
+    if (visibleObjects.length === 0) {
         const emptyState = document.createElement('p');
         emptyState.className = 'empty-state';
-        emptyState.textContent = 'No objects yet. Select "Add" to create one.';
+        emptyState.textContent = objects.length === 0
+            ? 'No objects yet. Select "Add" to create one.'
+            : 'No objects match the current filter.';
         elements.list.append(emptyState);
         return;
     }
 
-    objects.forEach((object) => {
+    visibleObjects.forEach((object) => {
         const card = document.createElement('article');
         card.className = 'mini-card';
+        card.draggable = true;
+        card.dataset.objectId = object.id;
+        card.addEventListener('dragstart', (event) => {
+            event.dataTransfer.setData('text/plain', object.id);
+            event.dataTransfer.effectAllowed = 'copy';
+        });
 
         const name = document.createElement('span');
         name.className = 'mini-card__name';
@@ -88,6 +166,136 @@ function renderObjects() {
     });
 }
 
+function renderComparison() {
+    elements.comparisonDropzone.replaceChildren();
+    const comparedObjects = comparisonIds
+        .map((id) => objects.find((object) => object.id === id))
+        .filter(Boolean);
+
+    if (comparedObjects.length === 0) {
+        const emptyState = document.createElement('p');
+        emptyState.className = 'dropzone-empty';
+        emptyState.textContent = 'Drag objects here to compare them.';
+        elements.comparisonDropzone.append(emptyState);
+        return;
+    }
+
+    const parsedObjects = comparedObjects.map((object) => {
+        let parsedContent;
+        try {
+            parsedContent = JSON.parse(object.content);
+        } catch {
+            parsedContent = object.content;
+        }
+        return { object, content: parsedContent };
+    });
+
+    const valuesByKey = new Map();
+    const objectContents = parsedObjects.filter(({ content }) =>
+        content && typeof content === 'object' && !Array.isArray(content));
+
+    if (objectContents.length > 0) {
+        objectContents.forEach(({ object, content }) => {
+            Object.entries(content).forEach(([key, value]) => {
+                if (!valuesByKey.has(key)) valuesByKey.set(key, []);
+                valuesByKey.get(key).push({ id: object.id, value });
+            });
+        });
+    } else {
+        valuesByKey.set('Value', parsedObjects.map(({ object, content }) => ({
+            id: object.id,
+            value: content,
+        })));
+    }
+
+    const table = document.createElement('table');
+    table.className = 'comparison-table';
+    const caption = document.createElement('caption');
+    caption.className = 'visually-hidden';
+    caption.textContent = 'Comparison of selected objects';
+    table.append(caption);
+
+    const head = table.createTHead().insertRow();
+    const keyHeader = document.createElement('th');
+    keyHeader.scope = 'col';
+    keyHeader.textContent = 'Key';
+    head.append(keyHeader);
+
+    comparedObjects.forEach((object) => {
+        const header = document.createElement('th');
+        header.scope = 'col';
+        header.textContent = object.name;
+        const removeButton = document.createElement('button');
+        removeButton.className = 'remove-comparison';
+        removeButton.type = 'button';
+        removeButton.textContent = 'Remove';
+        removeButton.addEventListener('click', () => removeFromComparison(object.id));
+        header.append(removeButton);
+        head.append(header);
+    });
+
+    const body = table.createTBody();
+    [...valuesByKey.entries()]
+        .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
+        .forEach(([key, values]) => {
+        const row = body.insertRow();
+        row.insertCell().textContent = key;
+        comparedObjects.forEach((object) => {
+            const cell = row.insertCell();
+            const entry = values.find((item) => item.id === object.id);
+            const code = document.createElement('code');
+            code.textContent = entry ? formatValue(entry.value) : '—';
+            cell.append(code);
+        });
+    });
+
+    elements.comparisonDropzone.append(table);
+}
+
+function formatValue(value) {
+    return typeof value === 'string' ? value : JSON.stringify(value);
+}
+
+function removeFromComparison(id) {
+    comparisonIds = comparisonIds.filter((comparisonId) => comparisonId !== id);
+    saveComparisonIds();
+    renderComparison();
+}
+
+function saveComparisonSet() {
+    const name = elements.setName.value.trim();
+
+    if (!name) {
+        elements.setName.focus();
+        return;
+    }
+
+    const savedSet = {
+        id: crypto.randomUUID(),
+        name,
+        objectIds: [...comparisonIds],
+    };
+
+    comparisonSets.push(savedSet);
+    saveComparisonSets();
+    renderComparisonSetOptions();
+    elements.setSelector.value = savedSet.id;
+    elements.setName.value = '';
+}
+
+function loadComparisonSet(id) {
+    const savedSet = comparisonSets.find((set) => set.id === id);
+
+    if (!savedSet) {
+        return;
+    }
+
+    comparisonIds = savedSet.objectIds.filter((objectId) =>
+        objects.some((object) => object.id === objectId));
+    saveComparisonIds();
+    renderComparison();
+}
+
 function openDialog(object = null) {
     editingId = object?.id ?? null;
     elements.title.textContent = object ? 'Edit object' : 'Add object';
@@ -111,17 +319,53 @@ function deleteObject(id) {
     }
 
     objects = objects.filter((item) => item.id !== id);
+    comparisonIds = comparisonIds.filter((comparisonId) => comparisonId !== id);
+    comparisonSets = comparisonSets.map((set) => ({
+        ...set,
+        objectIds: set.objectIds.filter((objectId) => objectId !== id),
+    }));
     saveObjects();
+    saveComparisonIds();
+    saveComparisonSets();
     renderObjects();
+    renderComparisonSetOptions();
+    renderComparison();
 }
 
 elements.openButton.addEventListener('click', () => openDialog());
+elements.filter.addEventListener('input', renderObjects);
+elements.saveSetButton.addEventListener('click', saveComparisonSet);
+elements.setSelector.addEventListener('change', (event) => loadComparisonSet(event.target.value));
 elements.closeButton.addEventListener('click', closeDialog);
 elements.cancelButton.addEventListener('click', closeDialog);
 
 elements.dialog.addEventListener('click', (event) => {
     if (event.target === elements.dialog) {
         closeDialog();
+    }
+});
+
+elements.comparisonDropzone.addEventListener('dragover', (event) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+    elements.comparisonDropzone.classList.add('is-dragging-over');
+});
+
+elements.comparisonDropzone.addEventListener('dragleave', (event) => {
+    if (!elements.comparisonDropzone.contains(event.relatedTarget)) {
+        elements.comparisonDropzone.classList.remove('is-dragging-over');
+    }
+});
+
+elements.comparisonDropzone.addEventListener('drop', (event) => {
+    event.preventDefault();
+    elements.comparisonDropzone.classList.remove('is-dragging-over');
+    const id = event.dataTransfer.getData('text/plain');
+
+    if (objects.some((object) => object.id === id) && !comparisonIds.includes(id)) {
+        comparisonIds.push(id);
+        saveComparisonIds();
+        renderComparison();
     }
 });
 
@@ -159,7 +403,17 @@ elements.form.addEventListener('submit', (event) => {
 
     saveObjects();
     renderObjects();
+    comparisonIds = comparisonIds.filter((id) => objects.some((object) => object.id === id));
+    saveComparisonIds();
+    comparisonSets = comparisonSets.map((set) => ({
+        ...set,
+        objectIds: set.objectIds.filter((id) => objects.some((object) => object.id === id)),
+    }));
+    saveComparisonSets();
+    renderComparisonSetOptions();
+    renderComparison();
     closeDialog();
 });
 
 renderObjects();
+renderComparison();
