@@ -2,6 +2,7 @@ const STORAGE_KEY = 'compara-objects';
 const COMPARISON_STORAGE_KEY = 'compara-comparison';
 const COMPARISON_SETS_STORAGE_KEY = 'compara-comparison-sets';
 const COMPARISON_KEYS_STORAGE_KEY = 'compara-comparison-keys';
+const REPORT_VERSION = 1;
 
 const icons = {
     edit: '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.862 4.487Zm0 0L19.5 7.125" /></svg>',
@@ -19,6 +20,9 @@ const elements = {
     formatJsonButton: document.querySelector('#format-json'),
     list: document.querySelector('#objects-list'),
     filter: document.querySelector('#object-filter'),
+    exportReportButton: document.querySelector('#export-report'),
+    importReportButton: document.querySelector('#import-report'),
+    reportFile: document.querySelector('#report-file'),
     comparisonDropzone: document.querySelector('#comparison-dropzone'),
     comparisonKeySelector: document.querySelector('#comparison-key-selector'),
     setName: document.querySelector('#comparison-set-name'),
@@ -118,6 +122,129 @@ function loadComparisonSets() {
 
 function saveComparisonSets() {
     localStorage.setItem(COMPARISON_SETS_STORAGE_KEY, JSON.stringify(comparisonSets));
+}
+
+function saveReportState() {
+    saveObjects();
+    saveComparisonIds();
+    if (selectedComparisonKeys === null) {
+        localStorage.removeItem(COMPARISON_KEYS_STORAGE_KEY);
+    } else {
+        saveComparisonKeys();
+    }
+    saveComparisonSets();
+}
+
+function createReport() {
+    return {
+        format: 'compara-report',
+        version: REPORT_VERSION,
+        exportedAt: new Date().toISOString(),
+        objects,
+        comparisonIds,
+        comparisonSets,
+        selectedComparisonKeys: selectedComparisonKeys === null
+            ? null
+            : [...selectedComparisonKeys],
+        selectedComparisonSetId,
+    };
+}
+
+function downloadReport() {
+    const report = JSON.stringify(createReport(), null, 2);
+    const blob = new Blob([report], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const date = new Date().toISOString().slice(0, 10);
+    link.href = url;
+    link.download = `compara-report-${date}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+}
+
+function validateReport(report) {
+    if (!report || typeof report !== 'object' ||
+        report.format !== 'compara-report' || report.version !== REPORT_VERSION) {
+        throw new Error('The file is not a supported Compara report.');
+    }
+
+    if (!Array.isArray(report.objects) || !report.objects.every((object) =>
+        object && typeof object.id === 'string' &&
+        typeof object.name === 'string' && typeof object.content === 'string')) {
+        throw new Error('The report contains invalid objects.');
+    }
+
+    const objectIds = new Set(report.objects.map((object) => object.id));
+    if (objectIds.size !== report.objects.length) {
+        throw new Error('The report contains duplicate object IDs.');
+    }
+
+    if (!Array.isArray(report.comparisonIds) ||
+        !report.comparisonIds.every((id) => objectIds.has(id))) {
+        throw new Error('The report contains invalid active comparison objects.');
+    }
+
+    if (!Array.isArray(report.comparisonSets) ||
+        !report.comparisonSets.every((set) =>
+            set && typeof set.id === 'string' && typeof set.name === 'string' &&
+            Array.isArray(set.objectIds) &&
+            set.objectIds.every((id) => objectIds.has(id)) &&
+            (set.keys === undefined || Array.isArray(set.keys)))) {
+        throw new Error('The report contains invalid comparison sets.');
+    }
+
+    const setIds = new Set(report.comparisonSets.map((set) => set.id));
+    if (setIds.size !== report.comparisonSets.length) {
+        throw new Error('The report contains duplicate comparison set IDs.');
+    }
+
+    if (report.selectedComparisonKeys !== null &&
+        !Array.isArray(report.selectedComparisonKeys)) {
+        throw new Error('The report contains invalid comparison key settings.');
+    }
+
+    if (report.selectedComparisonSetId !== null &&
+        report.selectedComparisonSetId !== undefined &&
+        !setIds.has(report.selectedComparisonSetId)) {
+        throw new Error('The report references an unknown selected set.');
+    }
+}
+
+async function importReport(file) {
+    if (!file) {
+        return;
+    }
+
+    try {
+        const report = JSON.parse(await file.text());
+        validateReport(report);
+
+        if (!window.confirm('Loading this report will replace the current objects and sets. Continue?')) {
+            return;
+        }
+
+        objects = report.objects;
+        comparisonIds = report.comparisonIds;
+        comparisonSets = report.comparisonSets;
+        selectedComparisonKeys = report.selectedComparisonKeys === null
+            ? null
+            : new Set(report.selectedComparisonKeys);
+        selectedComparisonSetId = report.selectedComparisonSetId ?? null;
+        saveReportState();
+
+        const selectedSet = comparisonSets.find((set) => set.id === selectedComparisonSetId);
+        elements.setName.value = selectedSet?.name ?? '';
+        elements.filter.value = '';
+        renderObjects();
+        renderComparisonSetOptions();
+        renderComparison();
+        updateComparisonSetButton();
+    } catch (error) {
+        console.error('Unable to load Compara report.', error);
+        window.alert(`Unable to load report: ${error.message}`);
+    } finally {
+        elements.reportFile.value = '';
+    }
 }
 
 function arraysMatch(first, second) {
@@ -574,6 +701,9 @@ function deleteObject(id) {
 }
 
 elements.openButton.addEventListener('click', () => openDialog());
+elements.exportReportButton.addEventListener('click', downloadReport);
+elements.importReportButton.addEventListener('click', () => elements.reportFile.click());
+elements.reportFile.addEventListener('change', () => importReport(elements.reportFile.files[0]));
 elements.filter.addEventListener('input', renderObjects);
 elements.setName.addEventListener('input', updateComparisonSetButton);
 elements.saveSetButton.addEventListener('click', saveComparisonSet);

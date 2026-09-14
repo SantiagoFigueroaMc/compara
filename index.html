@@ -52,6 +52,11 @@
             flex: 1;
         }
 
+        .report-controls {
+            display: flex;
+            gap: 8px;
+        }
+
         .filter-input {
             width: min(320px, 100%);
             min-width: 0;
@@ -521,6 +526,11 @@
             <h2>Available objects</h2>
             <div class="object-controls">
                 <input id="object-filter" class="filter-input" type="search" placeholder="Filter by name, key or value" aria-label="Filter objects">
+                <div class="report-controls" aria-label="Report actions">
+                    <button id="export-report" type="button">Download report</button>
+                    <button id="import-report" type="button">Load report</button>
+                    <input id="report-file" class="visually-hidden" type="file" accept="application/json,.json">
+                </div>
                 <button id="open-object-dialog" class="icon-button" type="button">
                     <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
