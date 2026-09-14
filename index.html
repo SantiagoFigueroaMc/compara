@@ -372,6 +372,36 @@
             width: 180px;
         }
 
+        .comparison-table td:first-child {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
+        .hide-key-button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border: 0;
+            padding: 3px;
+            color: #6b7280;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 150ms ease;
+        }
+
+        .comparison-table td:first-child:hover .hide-key-button,
+        .comparison-table td:first-child:focus-within .hide-key-button {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .hide-key-button:hover {
+            background: #e5e7eb;
+            color: #111827;
+        }
+
         .comparison-table code {
             white-space: pre-wrap;
             overflow-wrap: anywhere;
