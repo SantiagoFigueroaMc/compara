@@ -257,6 +257,22 @@ function formatValue(value) {
     return typeof value === 'string' ? value : JSON.stringify(value);
 }
 
+function sortJsonKeys(value) {
+    if (Array.isArray(value)) {
+        return value.map(sortJsonKeys);
+    }
+
+    if (value && typeof value === 'object') {
+        return Object.fromEntries(
+            Object.entries(value)
+                .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
+                .map(([key, entryValue]) => [key, sortJsonKeys(entryValue)]),
+        );
+    }
+
+    return value;
+}
+
 function removeFromComparison(id) {
     comparisonIds = comparisonIds.filter((comparisonId) => comparisonId !== id);
     saveComparisonIds();
@@ -339,7 +355,8 @@ elements.saveSetButton.addEventListener('click', saveComparisonSet);
 elements.setSelector.addEventListener('change', (event) => loadComparisonSet(event.target.value));
 elements.formatJsonButton.addEventListener('click', () => {
     try {
-        const formattedContent = JSON.stringify(JSON.parse(elements.content.value), null, 2);
+        const parsedContent = JSON.parse(elements.content.value);
+        const formattedContent = JSON.stringify(sortJsonKeys(parsedContent), null, 2);
         elements.content.value = formattedContent;
     } catch {
         window.alert('Content must be valid JSON before it can be formatted.');
