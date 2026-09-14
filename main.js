@@ -140,6 +140,17 @@ function updateComparisonSetButton() {
 function renderComparisonSetOptions() {
     elements.setMenu.replaceChildren();
 
+    const newSetOption = document.createElement('div');
+    newSetOption.className = 'set-menu__item';
+
+    const newSetButton = document.createElement('button');
+    newSetButton.type = 'button';
+    newSetButton.className = 'set-menu__load';
+    newSetButton.textContent = 'Nuevo...';
+    newSetButton.addEventListener('click', () => loadComparisonSet(null));
+    newSetOption.append(newSetButton);
+    elements.setMenu.append(newSetOption);
+
     if (comparisonSets.length === 0) {
         const emptyState = document.createElement('p');
         emptyState.className = 'set-menu-empty';
@@ -184,6 +195,7 @@ function deleteComparisonSet(id) {
     if (selectedComparisonSetId === id) {
         selectedComparisonSetId = null;
         elements.setName.value = '';
+        elements.setName.focus();
         updateComparisonSetButton();
     }
 
@@ -494,6 +506,8 @@ function loadComparisonSet(id) {
         selectedComparisonSetId = null;
         elements.setName.value = '';
         updateComparisonSetButton();
+        elements.setMenu.hidden = true;
+        elements.setMenuToggle.setAttribute('aria-expanded', 'false');
         return;
     }
 
