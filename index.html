@@ -30,7 +30,9 @@
         }
 
         .cards-container {
-            max-width: 900px;
+            width: 90vw;
+            max-width: none;
+            box-sizing: border-box;
             margin: 0 auto;
         }
 
@@ -90,7 +92,8 @@
             flex: 1;
             min-height: 0;
             margin: 0;
-            overflow: auto;
+            overflow-x: hidden;
+            overflow-y: auto;
             white-space: pre-wrap;
             font-size: 0.8em;
             color: #555;
@@ -179,7 +182,9 @@
         }
 
         .comparison-section {
-            max-width: 900px;
+            width: 90vw;
+            max-width: none;
+            box-sizing: border-box;
             margin: 28px auto 0;
         }
 
@@ -202,19 +207,81 @@
 
         .set-name-input {
             width: 190px;
-            border: 1px solid var(--border);
-            border-radius: 6px;
+            min-width: 0;
+            border: 0;
+            outline: 0;
             padding: 8px 10px;
             font: inherit;
         }
 
-        .set-selector {
-            min-width: 170px;
+        .set-picker {
+            position: relative;
+            display: flex;
+            width: 260px;
             border: 1px solid var(--border);
             border-radius: 6px;
             background: #fff;
-            padding: 8px 10px;
-            font: inherit;
+        }
+
+        .set-menu-toggle {
+            flex: 0 0 34px;
+            border: 0;
+            border-left: 1px solid var(--border);
+            background: #fff;
+            padding: 0;
+            font-size: 1.1rem;
+        }
+
+        .set-menu-toggle:hover {
+            background: #f3f4f6;
+        }
+
+        .set-menu {
+            position: absolute;
+            z-index: 2;
+            top: calc(100% + 4px);
+            right: 0;
+            left: 0;
+            max-height: 260px;
+            overflow-y: auto;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: #fff;
+            box-shadow: 0 4px 12px rgb(0 0 0 / 12%);
+        }
+
+        .set-menu__item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px;
+        }
+
+        .set-menu__load {
+            flex: 1;
+            min-width: 0;
+            border: 0;
+            text-align: left;
+            overflow-wrap: anywhere;
+        }
+
+        .set-menu__delete {
+            flex: 0 0 auto;
+            border: 0;
+            padding: 6px;
+            color: var(--danger);
+        }
+
+        .set-menu__delete:hover {
+            background: #fef2f2;
+            color: var(--danger-hover);
+        }
+
+        .set-menu-empty {
+            margin: 0;
+            padding: 10px;
+            color: #6b7280;
+            font-size: 0.9rem;
         }
 
         .comparison-dropzone {
@@ -246,6 +313,20 @@
         .comparison-key-selector h3 {
             margin: 0 0 10px;
             font-size: 0.95rem;
+        }
+
+        .key-selector__group {
+            border-top: 1px solid #e5e7eb;
+            padding-top: 8px;
+            margin-top: 10px;
+        }
+
+        .key-selector__group h4 {
+            margin: 0 0 6px;
+            color: #4b5563;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
         }
 
         .key-selector__option {
@@ -385,6 +466,14 @@
             .comparison-layout {
                 grid-template-columns: 1fr;
             }
+
+            .comparison-section {
+                width: 100%;
+            }
+
+            .cards-container {
+                width: 100%;
+            }
         }
 
         .icon {
@@ -415,11 +504,12 @@
     <section class="comparison-section" aria-labelledby="comparison-title">
         <div class="comparison-header">
             <h2 id="comparison-title">Object comparison</h2>
-            <input id="comparison-set-name" class="set-name-input" type="text" maxlength="80" placeholder="Comparison set name" aria-label="Comparison set name">
+            <div class="set-picker">
+                <input id="comparison-set-name" class="set-name-input" type="text" maxlength="80" placeholder="Comparison set name" aria-label="Comparison set name">
+                <button id="comparison-set-menu-toggle" class="set-menu-toggle" type="button" aria-label="Open saved comparison sets" aria-expanded="false">▾</button>
+                <div id="comparison-set-menu" class="set-menu" hidden></div>
+            </div>
             <button id="save-comparison-set" type="button">Save set</button>
-            <select id="comparison-set-selector" class="set-selector" aria-label="Load comparison set">
-                <option value="">Load saved set</option>
-            </select>
         </div>
         <div class="comparison-layout">
             <aside id="comparison-key-selector" class="comparison-key-selector" aria-label="Keys to show">

@@ -21,7 +21,8 @@ const elements = {
     comparisonKeySelector: document.querySelector('#comparison-key-selector'),
     setName: document.querySelector('#comparison-set-name'),
     saveSetButton: document.querySelector('#save-comparison-set'),
-    setSelector: document.querySelector('#comparison-set-selector'),
+    setMenu: document.querySelector('#comparison-set-menu'),
+    setMenuToggle: document.querySelector('#comparison-set-menu-toggle'),
     openButton: document.querySelector('#open-object-dialog'),
     closeButton: document.querySelector('#close-btn'),
     cancelButton: document.querySelector('#cancel-object'),
@@ -31,6 +32,7 @@ let objects = loadObjects();
 let comparisonIds = loadComparisonIds();
 let comparisonSets = loadComparisonSets();
 let selectedComparisonKeys = loadComparisonKeys();
+let selectedComparisonSetId = null;
 let editingId = null;
 
 function loadObjects() {
@@ -82,7 +84,7 @@ function loadComparisonKeys() {
 
     try {
         const parsedKeys = JSON.parse(storedKeys);
-        return Array.isArray(parsedKeys) ? parsedKeys : null;
+        return Array.isArray(parsedKeys) ? new Set(parsedKeys) : null;
     } catch {
         console.error(`Unable to read stored comparison keys from "${COMPARISON_KEYS_STORAGE_KEY}".`);
         return null;
@@ -116,19 +118,76 @@ function saveComparisonSets() {
     localStorage.setItem(COMPARISON_SETS_STORAGE_KEY, JSON.stringify(comparisonSets));
 }
 
+function arraysMatch(first, second) {
+    return first.length === second.length && first.every((value, index) => value === second[index]);
+}
+
+function hasComparisonSetChanges(savedSet) {
+    return savedSet.name !== elements.setName.value.trim()
+        || !arraysMatch(savedSet.objectIds, comparisonIds)
+        || !arraysMatch(savedSet.keys ?? [], [...selectedComparisonKeys]);
+}
+
+function updateComparisonSetButton() {
+    const selectedSet = comparisonSets.find((set) => set.id === selectedComparisonSetId);
+    const isUpdate = selectedSet && hasComparisonSetChanges(selectedSet);
+    elements.saveSetButton.textContent = isUpdate ? 'Update set' : 'Save set';
+    elements.saveSetButton.dataset.mode = isUpdate ? 'update' : 'save';
+}
+
 function renderComparisonSetOptions() {
-    elements.setSelector.replaceChildren();
-    const placeholder = document.createElement('option');
-    placeholder.value = '';
-    placeholder.textContent = 'Load saved set';
-    elements.setSelector.append(placeholder);
+    elements.setMenu.replaceChildren();
+
+    if (comparisonSets.length === 0) {
+        const emptyState = document.createElement('p');
+        emptyState.className = 'set-menu-empty';
+        emptyState.textContent = 'No saved sets.';
+        elements.setMenu.append(emptyState);
+        return;
+    }
 
     comparisonSets.forEach((set) => {
-        const option = document.createElement('option');
-        option.value = set.id;
-        option.textContent = set.name;
-        elements.setSelector.append(option);
+        const option = document.createElement('div');
+        option.className = 'set-menu__item';
+
+        const loadButton = document.createElement('button');
+        loadButton.type = 'button';
+        loadButton.className = 'set-menu__load';
+        loadButton.textContent = set.name;
+        loadButton.addEventListener('click', () => loadComparisonSet(set.id));
+
+        const deleteButton = document.createElement('button');
+        deleteButton.type = 'button';
+        deleteButton.className = 'set-menu__delete';
+        deleteButton.setAttribute('aria-label', `Delete set ${set.name}`);
+        deleteButton.title = 'Delete set';
+        deleteButton.innerHTML = icons.delete;
+        deleteButton.addEventListener('click', () => deleteComparisonSet(set.id));
+
+        option.append(loadButton, deleteButton);
+        elements.setMenu.append(option);
     });
+}
+
+function deleteComparisonSet(id) {
+    const set = comparisonSets.find((item) => item.id === id);
+
+    if (!set || !window.confirm(`Delete set "${set.name}"?`)) {
+        return;
+    }
+
+    comparisonSets = comparisonSets.filter((item) => item.id !== id);
+    saveComparisonSets();
+
+    if (selectedComparisonSetId === id) {
+        selectedComparisonSetId = null;
+        elements.setName.value = '';
+        updateComparisonSetButton();
+    }
+
+    elements.setMenu.hidden = true;
+    elements.setMenuToggle.setAttribute('aria-expanded', 'false');
+    renderComparisonSetOptions();
 }
 
 function renderComparisonKeySelector(keys) {
@@ -146,7 +205,18 @@ function renderComparisonKeySelector(keys) {
     title.textContent = 'Keys to show';
     elements.comparisonKeySelector.append(title);
 
-    keys.forEach((key) => {
+    const createKeyGroup = (groupTitle, groupKeys) => {
+        if (groupKeys.length === 0) {
+            return;
+        }
+
+        const group = document.createElement('section');
+        group.className = 'key-selector__group';
+        const heading = document.createElement('h4');
+        heading.textContent = groupTitle;
+        group.append(heading);
+
+        groupKeys.forEach((key) => {
         const label = document.createElement('label');
         label.className = 'key-selector__option';
 
@@ -160,12 +230,25 @@ function renderComparisonKeySelector(keys) {
             );
             saveComparisonKeys();
             renderComparison();
+            updateComparisonSetButton();
         });
 
         checkbox.value = key;
         label.append(checkbox, document.createTextNode(key));
-        elements.comparisonKeySelector.append(label);
-    });
+            group.append(label);
+        });
+
+        elements.comparisonKeySelector.append(group);
+    };
+
+    createKeyGroup(
+        'Active keys',
+        keys.filter((key) => selectedComparisonKeys.has(key)),
+    );
+    createKeyGroup(
+        'Other keys',
+        keys.filter((key) => !selectedComparisonKeys.has(key)),
+    );
 }
 
 function renderObjects() {
@@ -353,6 +436,7 @@ function removeFromComparison(id) {
     comparisonIds = comparisonIds.filter((comparisonId) => comparisonId !== id);
     saveComparisonIds();
     renderComparison();
+    updateComparisonSetButton();
 }
 
 function saveComparisonSet() {
@@ -360,6 +444,17 @@ function saveComparisonSet() {
 
     if (!name) {
         elements.setName.focus();
+        return;
+    }
+
+    const selectedSet = comparisonSets.find((set) => set.id === selectedComparisonSetId);
+    if (selectedSet && hasComparisonSetChanges(selectedSet)) {
+        selectedSet.name = name;
+        selectedSet.objectIds = [...comparisonIds];
+        selectedSet.keys = [...selectedComparisonKeys];
+        saveComparisonSets();
+        renderComparisonSetOptions();
+        updateComparisonSetButton();
         return;
     }
 
@@ -373,17 +468,26 @@ function saveComparisonSet() {
     comparisonSets.push(savedSet);
     saveComparisonSets();
     renderComparisonSetOptions();
-    elements.setSelector.value = savedSet.id;
-    elements.setName.value = '';
+    selectedComparisonSetId = savedSet.id;
+    updateComparisonSetButton();
 }
 
 function loadComparisonSet(id) {
+    if (!id) {
+        selectedComparisonSetId = null;
+        elements.setName.value = '';
+        updateComparisonSetButton();
+        return;
+    }
+
     const savedSet = comparisonSets.find((set) => set.id === id);
 
     if (!savedSet) {
         return;
     }
 
+    selectedComparisonSetId = savedSet.id;
+    elements.setName.value = savedSet.name;
     comparisonIds = savedSet.objectIds.filter((objectId) =>
         objects.some((object) => object.id === objectId));
     selectedComparisonKeys = Array.isArray(savedSet.keys)
@@ -391,6 +495,9 @@ function loadComparisonSet(id) {
         : null;
     saveComparisonIds();
     renderComparison();
+    updateComparisonSetButton();
+    elements.setMenu.hidden = true;
+    elements.setMenuToggle.setAttribute('aria-expanded', 'false');
 }
 
 function openDialog(object = null) {
@@ -410,6 +517,7 @@ function closeDialog() {
 
 function deleteObject(id) {
     const object = objects.find((item) => item.id === id);
+    const selectedSet = comparisonSets.find((set) => set.id === selectedComparisonSetId);
 
     if (!object || !window.confirm(`Delete "${object.name}"?`)) {
         return;
@@ -424,15 +532,31 @@ function deleteObject(id) {
     saveObjects();
     saveComparisonIds();
     saveComparisonSets();
+    if (selectedSet && selectedSet.objectIds.includes(id)) {
+        selectedComparisonSetId = null;
+        elements.setName.value = '';
+    }
     renderObjects();
     renderComparisonSetOptions();
     renderComparison();
+    updateComparisonSetButton();
 }
 
 elements.openButton.addEventListener('click', () => openDialog());
 elements.filter.addEventListener('input', renderObjects);
+elements.setName.addEventListener('input', updateComparisonSetButton);
 elements.saveSetButton.addEventListener('click', saveComparisonSet);
-elements.setSelector.addEventListener('change', (event) => loadComparisonSet(event.target.value));
+elements.setMenuToggle.addEventListener('click', () => {
+    elements.setMenu.hidden = !elements.setMenu.hidden;
+    elements.setMenuToggle.setAttribute('aria-expanded', String(!elements.setMenu.hidden));
+});
+document.addEventListener('click', (event) => {
+    if (!elements.setMenu.contains(event.target) &&
+        !elements.setMenuToggle.contains(event.target)) {
+        elements.setMenu.hidden = true;
+        elements.setMenuToggle.setAttribute('aria-expanded', 'false');
+    }
+});
 elements.formatJsonButton.addEventListener('click', () => {
     try {
         const parsedContent = JSON.parse(elements.content.value);
@@ -476,6 +600,7 @@ elements.comparisonDropzone.addEventListener('drop', (event) => {
         }
         saveComparisonIds();
         renderComparison();
+        updateComparisonSetButton();
     }
 });
 
@@ -534,8 +659,11 @@ elements.form.addEventListener('submit', (event) => {
     saveComparisonSets();
     renderComparisonSetOptions();
     renderComparison();
+    updateComparisonSetButton();
     closeDialog();
 });
 
 renderObjects();
+renderComparisonSetOptions();
 renderComparison();
+updateComparisonSetButton();
