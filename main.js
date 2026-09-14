@@ -1,6 +1,7 @@
 const STORAGE_KEY = 'compara-objects';
 const COMPARISON_STORAGE_KEY = 'compara-comparison';
 const COMPARISON_SETS_STORAGE_KEY = 'compara-comparison-sets';
+const COMPARISON_KEYS_STORAGE_KEY = 'compara-comparison-keys';
 
 const icons = {
     edit: '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.862 4.487Zm0 0L19.5 7.125" /></svg>',
@@ -17,6 +18,7 @@ const elements = {
     list: document.querySelector('#objects-list'),
     filter: document.querySelector('#object-filter'),
     comparisonDropzone: document.querySelector('#comparison-dropzone'),
+    comparisonKeySelector: document.querySelector('#comparison-key-selector'),
     setName: document.querySelector('#comparison-set-name'),
     saveSetButton: document.querySelector('#save-comparison-set'),
     setSelector: document.querySelector('#comparison-set-selector'),
@@ -28,6 +30,7 @@ const elements = {
 let objects = loadObjects();
 let comparisonIds = loadComparisonIds();
 let comparisonSets = loadComparisonSets();
+let selectedComparisonKeys = loadComparisonKeys();
 let editingId = null;
 
 function loadObjects() {
@@ -70,6 +73,29 @@ function saveComparisonIds() {
     localStorage.setItem(COMPARISON_STORAGE_KEY, JSON.stringify(comparisonIds));
 }
 
+function loadComparisonKeys() {
+    const storedKeys = localStorage.getItem(COMPARISON_KEYS_STORAGE_KEY);
+
+    if (!storedKeys) {
+        return null;
+    }
+
+    try {
+        const parsedKeys = JSON.parse(storedKeys);
+        return Array.isArray(parsedKeys) ? parsedKeys : null;
+    } catch {
+        console.error(`Unable to read stored comparison keys from "${COMPARISON_KEYS_STORAGE_KEY}".`);
+        return null;
+    }
+}
+
+function saveComparisonKeys() {
+    localStorage.setItem(
+        COMPARISON_KEYS_STORAGE_KEY,
+        JSON.stringify([...selectedComparisonKeys]),
+    );
+}
+
 function loadComparisonSets() {
     const storedSets = localStorage.getItem(COMPARISON_SETS_STORAGE_KEY);
 
@@ -102,6 +128,43 @@ function renderComparisonSetOptions() {
         option.value = set.id;
         option.textContent = set.name;
         elements.setSelector.append(option);
+    });
+}
+
+function renderComparisonKeySelector(keys) {
+    elements.comparisonKeySelector.replaceChildren();
+
+    if (keys.length === 0) {
+        const emptyState = document.createElement('p');
+        emptyState.className = 'key-selector-empty';
+        emptyState.textContent = 'No keys available.';
+        elements.comparisonKeySelector.append(emptyState);
+        return;
+    }
+
+    const title = document.createElement('h3');
+    title.textContent = 'Keys to show';
+    elements.comparisonKeySelector.append(title);
+
+    keys.forEach((key) => {
+        const label = document.createElement('label');
+        label.className = 'key-selector__option';
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = selectedComparisonKeys.has(key);
+        checkbox.addEventListener('change', () => {
+            selectedComparisonKeys = new Set(
+                [...elements.comparisonKeySelector.querySelectorAll('input:checked')]
+                    .map((input) => input.value),
+            );
+            saveComparisonKeys();
+            renderComparison();
+        });
+
+        checkbox.value = key;
+        label.append(checkbox, document.createTextNode(key));
+        elements.comparisonKeySelector.append(label);
     });
 }
 
@@ -174,6 +237,8 @@ function renderComparison() {
         .filter(Boolean);
 
     if (comparedObjects.length === 0) {
+        selectedComparisonKeys = new Set();
+        renderComparisonKeySelector([]);
         const emptyState = document.createElement('p');
         emptyState.className = 'dropzone-empty';
         emptyState.textContent = 'Drag objects here to compare them.';
@@ -209,6 +274,16 @@ function renderComparison() {
         })));
     }
 
+    const allKeys = [...valuesByKey.keys()].sort((keyA, keyB) => keyA.localeCompare(keyB));
+    if (selectedComparisonKeys === null) {
+        selectedComparisonKeys = new Set(allKeys);
+    } else {
+        selectedComparisonKeys = new Set(
+            allKeys.filter((key) => selectedComparisonKeys.has(key)),
+        );
+    }
+    renderComparisonKeySelector(allKeys);
+
     const table = document.createElement('table');
     table.className = 'comparison-table';
     const caption = document.createElement('caption');
@@ -237,6 +312,7 @@ function renderComparison() {
 
     const body = table.createTBody();
     [...valuesByKey.entries()]
+        .filter(([key]) => selectedComparisonKeys.has(key))
         .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
         .forEach(([key, values]) => {
         const row = body.insertRow();
@@ -291,6 +367,7 @@ function saveComparisonSet() {
         id: crypto.randomUUID(),
         name,
         objectIds: [...comparisonIds],
+        keys: [...selectedComparisonKeys],
     };
 
     comparisonSets.push(savedSet);
@@ -309,6 +386,9 @@ function loadComparisonSet(id) {
 
     comparisonIds = savedSet.objectIds.filter((objectId) =>
         objects.some((object) => object.id === objectId));
+    selectedComparisonKeys = Array.isArray(savedSet.keys)
+        ? new Set(savedSet.keys)
+        : null;
     saveComparisonIds();
     renderComparison();
 }
@@ -391,6 +471,9 @@ elements.comparisonDropzone.addEventListener('drop', (event) => {
 
     if (objects.some((object) => object.id === id) && !comparisonIds.includes(id)) {
         comparisonIds.push(id);
+        if (selectedComparisonKeys?.size === 0) {
+            selectedComparisonKeys = null;
+        }
         saveComparisonIds();
         renderComparison();
     }
